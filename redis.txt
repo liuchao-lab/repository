@@ -1,0 +1,238 @@
+﻿redis 集群部署：
+1.用两台虚拟机模拟6个节点，一台机器3个节点，创建出3 master、3 salve 环境。
+下载：wget http://download.redis.io/releases/redis-3.2.4.tar.gz
+解压：tar -zxvf redis-3.2.4.tar.gz -C /usr/local
+2.编译安装：cd redis-3.2.4
+            make && make install
+3.将 redis-trib.rb 复制到 /usr/local/bin 目录下
+cd /usr/local/redis-3.2.4/src
+cp redis-trib.rb /usr/local/bin/　
+4.创建 Redis 节点
+首先在 192.168.163.171 机器上 /root/software/redis-3.2.4 目录下创建 redis_cluster 目录；
+mkdir redis_cluster　　
+在 redis_cluster 目录下，创建名为7000、7001、7002的目录，并将 redis.conf 拷贝到这三个目录中
+mkdir 7000 7001 7002
+cp redis.conf redis_cluster/7000
+cp redis.conf redis_cluster/7001
+cp redis.conf redis_cluster/7002　
+分别修改这三个配置文件，修改如下内容:
+```
+port  7000                                        //端口7000,7002,7003        
+bind 本机ip                                       //默认ip为127.0.0.1 需要改为其他节点机器可访问的ip 否则创建集群时无法访问对应的端口，无法创建集群
+daemonize    yes                               //redis后台运行
+pidfile  /var/run/redis_7000.pid          //pidfile文件对应7000,7001,7002
+cluster-enabled  yes                           //开启集群  把注释#去掉
+cluster-config-file  nodes_7000.conf   //集群的配置  配置文件首次启动自动生成 7000,7001,7002
+cluster-node-timeout  15000                //请求超时  默认15秒，可自行设置
+appendonly  yes                           //aof日志开启  有需要就开启，它会每次写操作都记录一条日志　
+
+```
+接着在另外一台机器上（192.168.163.194），的操作重复以上三步，只是把目录改为7003、7004、7005，对应的配置文件也按照这个规则修改即可
+5.启动各个节点
+第一台机器上执行
+redis-server redis_cluster/7000/redis.conf
+redis-server redis_cluster/7001/redis.conf
+redis-server redis_cluster/7002/redis.conf
+ 
+另外一台机器上执行
+redis-server redis_cluster/7003/redis.conf
+redis-server redis_cluster/7004/redis.conf
+redis-server redis_cluster/7005/redis.conf
+6. 检查 redis 启动情况
+ps -ef | grep redis
+root      61020      1  0 02:14 ?        00:00:01 redis-server 127.0.0.1:7000 [cluster]    
+root      61024      1  0 02:14 ?        00:00:01 redis-server 127.0.0.1:7001 [cluster]    
+root      61029      1  0 02:14 ?        00:00:01 redis-server 127.0.0.1:7002 [cluster] 
+netstat -tnlp | grep redis
+tcp        0      0 127.0.0.1:17000             0.0.0.0:*                   LISTEN      61020/redis-server 
+tcp        0      0 127.0.0.1:17001             0.0.0.0:*                   LISTEN      61024/redis-server 
+tcp        0      0 127.0.0.1:17002             0.0.0.0:*                   LISTEN      61029/redis-server 
+tcp        0      0 127.0.0.1:7000              0.0.0.0:*                   LISTEN      61020/redis-server 
+tcp        0      0 127.0.0.1:7001              0.0.0.0:*                   LISTEN      61024/redis-server 
+tcp        0      0 127.0.0.1:7002              0.0.0.0:*                   LISTEN      61029/redis-server
+另外一台机器
+ps -ef | grep redis
+root       9957      1  0 02:32 ?        00:00:01 redis-server 127.0.0.1:7003 [cluster]
+root       9964      1  0 02:32 ?        00:00:01 redis-server 127.0.0.1:7004 [cluster]
+root       9971      1  0 02:32 ?        00:00:01 redis-server 127.0.0.1:7005 [cluster]
+root      10065   4744  0 02:38 pts/0    00:00:00 grep --color=auto redis
+netstat -tlnp | grep redis
+tcp        0      0 127.0.0.1:17003         0.0.0.0:*               LISTEN      9957/redis-server 1
+tcp        0      0 127.0.0.1:17004         0.0.0.0:*               LISTEN      9964/redis-server 1
+tcp        0      0 127.0.0.1:17005         0.0.0.0:*               LISTEN      9971/redis-server 1
+tcp        0      0 127.0.0.1:7003          0.0.0.0:*               LISTEN      9957/redis-server 1
+tcp        0      0 127.0.0.1:7004          0.0.0.0:*               LISTEN      9964/redis-server 1
+tcp        0      0 127.0.0.1:7005          0.0.0.0:*               LISTEN      9971/redis-server 1 
+7.创建集群
+Redis 官方提供了 redis-trib.rb 这个工具，就在解压目录的 src 目录中，第三步中已将它复制到 /usr/local/bin 目录中，可以直接在命令行中使用了。使用下面这个命令即可完成安装。
+redis-trib.rb  create  --replicas  1  192.168.163.171:7000 192.168.163.171:7001  192.168.163.171:7002 192.168.163.194:7003  192.168.163.194:7004  192.168.163.194:7005
+其中，前三个 ip:port 为第一台机器的节点，剩下三个为第二台机器。
+
+等等，出错了。这个工具是用 ruby 实现的，所以需要安装 ruby。安装命令如下：
+
+yum -y install ruby ruby-devel rubygems rpm-build
+gem install redis
+
+如果执行gem install redis出现
+Fetching: redis-4.1.1.gem (100%)
+ERROR:  Error installing redis:
+	redis requires Ruby version >= 2.2.2.
+解决方法:
+①添加yum源安装：CentOS SCLo Software collections Repository（简单快捷）
+
+②下载tar压缩包安装（略微繁琐）
+
+③RVM（Ruby Version Manager）安装（相对官方）
+比如方法1：yum install centos-release-scl-rh　　　　//会在/etc/yum.repos.d/目录下多出一个CentOS-SCLo-scl-rh.repo源
+yum install rh-ruby23  -y　　　　//直接yum安装即可　　
+scl  enable  rh-ruby23 bash　　　　//必要一步
+ruby -v　　　　//查看安装版本
+
+再执行gem install redis
+最后重新执行：redis-trib.rb  create  --replicas  1  192.168.163.171:7000 192.168.163.171:7001  192.168.163.171:7002 192.168.163.194:7003  192.168.163.194:7004  192.168.163.194:7005
+>>> Creating cluster
+>>> Performing hash slots allocation on 6 nodes...
+Using 3 masters:
+192.168.163.171:7000
+192.168.163.194:7003
+192.168.163.171:7001
+Adding replica 192.168.163.194:7004 to 192.168.163.171:7000
+Adding replica 192.168.163.171:7002 to 192.168.163.194:7003
+Adding replica 192.168.163.194:7005 to 192.168.163.171:7001
+M: ceb6a939352ed68d8d0a8ca8ec3eb57b06dae676 192.168.163.171:7000
+   slots:0-5460 (5461 slots) master
+M: 0f4382f181bde972e8423866b054fbdcc599d517 192.168.163.171:7001
+   slots:10923-16383 (5461 slots) master
+S: af663be488af14ce646c2323436a4fef4b104b8e 192.168.163.171:7002
+   replicates 0133061bc7d5d09b18e88c6029b777346b927eb2
+M: 0133061bc7d5d09b18e88c6029b777346b927eb2 192.168.163.194:7003
+   slots:5461-10922 (5462 slots) master
+S: 0d0e94658a32cb6d53cae7e4cc9997efa7c2ccac 192.168.163.194:7004
+   replicates ceb6a939352ed68d8d0a8ca8ec3eb57b06dae676
+S: 3b9b99550d22d9ac5126218663ae5fffb1e40250 192.168.163.194:7005
+   replicates 0f4382f181bde972e8423866b054fbdcc599d517
+   Can I set the above configuration? (type 'yes' to accept): yes（此处输入yes）
+   >>> Nodes configuration updated
+>>> Assign a different config epoch to each node
+>>> Sending CLUSTER MEET messages to join the cluster
+Waiting for the cluster to join....
+>>> Performing Cluster Check (using node 192.168.163.171:7000)
+M: ceb6a939352ed68d8d0a8ca8ec3eb57b06dae676 192.168.163.171:7000
+   slots:0-5460 (5461 slots) master
+   1 additional replica(s)
+S: 0d0e94658a32cb6d53cae7e4cc9997efa7c2ccac 192.168.163.194:7004
+   slots: (0 slots) slave
+   replicates ceb6a939352ed68d8d0a8ca8ec3eb57b06dae676
+M: 0f4382f181bde972e8423866b054fbdcc599d517 192.168.163.171:7001
+   slots:10923-16383 (5461 slots) master
+   1 additional replica(s)
+S: af663be488af14ce646c2323436a4fef4b104b8e 192.168.163.171:7002
+   slots: (0 slots) slave
+   replicates 0133061bc7d5d09b18e88c6029b777346b927eb2
+M: 0133061bc7d5d09b18e88c6029b777346b927eb2 192.168.163.194:7003
+   slots:5461-10922 (5462 slots) master
+   1 additional replica(s)
+S: 3b9b99550d22d9ac5126218663ae5fffb1e40250 192.168.163.194:7005
+   slots: (0 slots) slave
+   replicates 0f4382f181bde972e8423866b054fbdcc599d517
+[OK] All nodes agree about slots configuration.
+>>> Check for open slots...
+>>> Check slots coverage...
+[OK] All 16384 slots covered.
+8. 集群验证
+在第一台机器上连接集群的7002端口的节点，在另外一台连接7005节点，连接方式为：
+redis-cli -h 192.168.163.171 -c -p 7002
+加参数 -C 可连接到集群，因为上面 redis.conf 将 bind 改为了ip地址，所以 -h 参数不可以省略
+在7002节点执行命令  set hello world 。
+然后在另外一台7005端口，查看 key 为 hello 的内容， get hello
+
+
+######集群客户端命令（redis-cli -c -p port）
+集群
+cluster info ：打印集群的信息
+cluster nodes ：列出集群当前已知的所有节点（ node），以及这些节点的相关信息。
+节点
+cluster meet <ip> <port> ：将 ip 和 port 所指定的节点添加到集群当中，让它成为集群的一份子。
+cluster forget <node_id> ：从集群中移除 node_id 指定的节点。
+cluster replicate <node_id> ：将当前节点设置为 node_id 指定的节点的从节点。
+cluster saveconfig ：将节点的配置文件保存到硬盘里面。
+槽(slot)
+cluster addslots <slot> [slot ...] ：将一个或多个槽（ slot）指派（ assign）给当前节点。
+cluster delslots <slot> [slot ...] ：移除一个或多个槽对当前节点的指派。
+cluster flushslots ：移除指派给当前节点的所有槽，让当前节点变成一个没有指派任何槽的节点。
+cluster setslot <slot> node <node_id> ：将槽 slot 指派给 node_id 指定的节点，如果槽已经指派给
+另一个节点，那么先让另一个节点删除该槽>，然后再进行指派。
+cluster setslot <slot> migrating <node_id> ：将本节点的槽 slot 迁移到 node_id 指定的节点中。
+cluster setslot <slot> importing <node_id> ：从 node_id 指定的节点中导入槽 slot 到本节点。
+cluster setslot <slot> stable ：取消对槽 slot 的导入（ import）或者迁移（ migrate）。
+键
+cluster keyslot <key> ：计算键 key 应该被放置在哪个槽上。
+cluster countkeysinslot <slot> ：返回槽 slot 目前包含的键值对数量。
+cluster getkeysinslot <slot> <count> ：返回 count 个 slot 槽中的键 
+
+
+docker部署redis集群：
+ 准备工具
+
+一、安装docker
+二、在docker库获取镜像：redis，ruby；下载redis-trib.rb(命令：wget http://download.redis.io/redis-stable/src/redis-trib.rb)
+三、找到一份原始的redis.conf文件，将其重命名为：redis-cluster.tmpl，并配置如下几个参数，此文件的目的是生成每一个redis实例的redis.conf:
+mkdir /home/redis-cluster
+touch /home/redis-cluster/redis-cluster.tmpl
+
+vim /home/redis-cluster/redis-cluster.tmpl
+# bind 127.0.0.1
+protected-mode no
+port ${PORT}
+daemonize no
+dir /data/redis
+appendonly yes
+cluster-enabled yes
+cluster-config-file nodes.conf
+cluster-node-timeout 15000
+
+利用ruby镜像构建一个redis-trib镜像，因为搭建redis-cluster的时候需要用到redis-trib工具。redis-trib镜像的Dockerfile如下
+FROM ruby
+MAINTAINER dongsilin<d@mail.com>
+RUN gem install redis
+RUN mkdir /redis
+WORKDIR /redis
+ADD ./redis-trib.rb /redis/redis-trib.rb
+通过命令(docker build -t redis-trib .)，即可构建出redis-trib镜像，后续搭建redis-cluster的
+
+
+redis实例运行在不同的宿主机上
+这里我将3个master实例运行在一台机(192.168.233.138)上，3个slave实例运行在另一台机器(192.168.233.139)上
+
+在两台机器上分别创建文件夹
+# 创建文件夹
+for port in `seq 7000 7002`; do
+    mkdir -p ./$port/ && mkdir -p ./$port/data \
+    && PORT=$port envsubst < ./redis-cluster.tmpl > ./$port/redis.conf;
+done
+
+在两台机器上分别运行docker redis 实例，注意这里就没有使用docker network了，直接使用的是宿主机的host，原因是要在不同机器的docker容器中通信是很麻烦的，有兴趣的朋友可以看下相关文章
+# 运行docker redis 实例
+for port in `seq 7000 7002`; do
+    docker run -d \
+    -v $PWD/$port/redis.conf:/data/redis.conf \
+    -v $PWD/$port/data:/data/redis \
+    --restart always --name redis-$port --net host \
+    redis redis-server /data/redis.conf;
+done
+
+ 执行命令 搭建集群
+docker run -it --rm redis-trib ruby redis-trib.rb create --replicas 1 第一台服务器ip:7000 第一台服务器ip:7001 第一台服务器ip:7002 第二台服务器:7000 第二台服务器:7001 第二台服务器:7002
+
+ 如果使用redis-trib方式搭建失败, 提示使用redis-cli的方式来搭建的话, 那么随便进入一个Redis实例
+docker exec -it 容器id /bin/bash
+
+执行以下命令搭建集群
+redis-cli --cluster create 第一台服务器ip:7000 第一台服务器ip:7001 第一台服务器ip:7002 第二台服务器ip:7000 第二台服务器ip:7001 第二台服务器ip:7002 --cluster-replicas 1
+
+ 提示 Can I set the above configuration? (type 'yes' to accept):
+输入 yes
+
+测试：
+redis-cli -h 192.168.233.139 -c -p 7000
+
