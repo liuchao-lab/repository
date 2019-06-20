@@ -1,0 +1,205 @@
+1，下载jdk环境  解压  指定目录   
+2，配置/etc/profile
+     JAVA_HOME=指定目录
+     export PATH=$PATH:$JAVA_HOME/bin
+     保存退出 source /etc/profile  生效
+3，下载Hadoop包 解压 指定目录
+4，配置/etc/profile
+      HADOOP_HOME=指定目录
+      export PATH=$PATH:$JAVA_HOME/bin:$HADOOP_HOME/bin
+      保存退出 source /etc/profile  生效
+5，更改/指定目录/etc/hadoop/hadoop-env.sh
+      找到export JAVA_HOME=   加上指定目录
+6，测试 Hadoop version或则which Hadoop
+7，作用例如
+         查询一个文件中一个单词出现的次数
+         首先创建一个目录  再cp一份/指定目录/etc/Hadoop/*.xml 创建的目录
+         Hadoop jar /指定目录/share/hadoop/mapreduce/hadoop-mapreduce-examples-2.6.5.jar wordcount 创建目录  /新生成目录名称
+         ll 查看新生成目录里的生成的文件  里面有两个文件  一个是sucess 另一个是生成文件
+         more 加上生成目录下的文件
+
+
+
+hadoop全分布式环境搭建
+主机                                    功能
+Hadoop1                         NameNode     DataNode    resourcemanager   nodemanager
+Hadoop2                         DataNode       nodemanager
+hadoop3                          DataNode       nodemanager
+
+配置   
+vim  /usr/local/hadoop-2.6.5/etc/hadoop/hadoop-env.sh
+export JAVA_HOME=/usr/local/jdk1.8.0_201/
+
+vim  /usr/local/hadoop-2.6.5/etc/hadoop/core-site.xml
+<!--配置文件系统的命名空间-->
+<property>
+<name>fs.defaultFS</name>
+<value>hdfs://hadoop1:9000</value>
+</property>
+<!--配置操作hdfs缓存大小-->
+<property>
+<name>io.file.buffer.size</name>
+<value>4096</value>
+</property>
+<!--配置临时数据存放目录-->
+<property>
+<name>hadoop.tmp.dir</name>
+<value>/home/bigdata/tmp</value>
+</property>
+
+
+vim  /usr/local/hadoop-2.6.5/etc/hadoop/hdfs-site.xml
+<!--副本数-->
+<property>
+<name>dfs.replication</name>
+<value>3</value>
+</property>
+<!--块大小-->
+<property>
+<name>dfs.block.size</name>
+<value>134217728</value>
+</property>
+<!--hdfs的元数据存储位置-->
+<property>
+<name>dfs.namenode.name.dir</name>
+<value>/home/hadoopdata/dfs/name</value>
+</property>
+<!--hdfs的数据存放位置-->
+<property>
+<name>dfs.datanode.data.dir</name>
+<value>/home/hadoopdata/dfs/data</value>
+</property>
+<!--hdfs的检测目录-->
+<property>
+<name>fs.checkpoint.dir</name>
+<value>/home/hadoopdata/checkpoint/dfs/cname</value>
+</property>
+<!--hdfs的web ui监控地址-->
+<property>
+<name>dfs.http.address</name>
+<value>hadoop1:50070</value>
+</property>
+<!--hdfs的snn的web ui地址-->
+<property>
+<name>dfs.secondary.http.address</name>
+<value>hadoop1:50090</value>
+</property>
+<!--是否开启web操作hdfs-->
+<property>
+<name>dfs.webhdfs.enabled</name>
+<value>false</value>
+</property>
+<!--是否启用hdfs的权限-->
+<property>
+<name>dfs.permissions</name>
+<value>false</value>
+</property>
+
+ mv /usr/local/hadoop-2.6.5/etc/hadoop/mapred-site.xml.template /usr/local/hadoop-2.6.5/etc/hadoop/mapred-site.xml
+vim /usr/local/hadoop-2.6.5/etc/hadoop/mapred-site.xml
+<!--指定mapreduce运行框架-->
+<property>
+<name>mapreduce.framework.name</name>
+<value>yarn</value>
+<final>true</final>
+</property>
+<!--历史服务的通信地址-->
+<property>
+<name>mapreduce.jobhistory.address</name>
+<value>hadoop1:10020</value>
+</property>
+<!--历史服务的web ui地址-->
+<property>
+<name>mapreduce.jobhistory.webapp.address</name>
+<value>hadoop1:19888</value>
+</property>
+
+vim /usr/local/hadoop-2.6.5/etc/hadoop/yarn-site.xml
+<!--指定rm所启动的服务主机名-->
+<property>
+<name>yarn.resourcemanager.hostname</name>
+<value>hadoop1</value>
+</property>
+
+<!--指定mr的shuffle-->
+<property>
+<name>yarn.nodemanager.aux-services</name>
+<value>mapreduce_shuffle</value>
+</property>
+<!--指定rm的内部通信地址-->
+<property>
+<name>yarn.resourcemanager.address</name>
+<value>hadoop1:8032</value>
+</property>
+
+<!--指定rmscheduler的内部通信地址-->
+<property>
+<name>yarn.resourcemanager.scheduler.address</name>
+<value>hadoop1:8030</value>
+</property>
+
+<!--指定rm的resource-tracker的内部通信地址-->
+<property>
+<name>yarn.resourcemanager.resource-tracker.address</name>
+<value>hadoop1:8031</value>
+</property>
+<!--指定rm的admin的内部通信地址-->
+<property>
+<name>yarn.resourcemanager.admin.address</name>
+<value>hadoop1:8033</value>
+</property>
+
+<!--配置rm的web ui监控地址-->
+<property>
+<name>yarn.resourcemanager.webapp.address</name>
+<value>hadoop1:8088</value>
+</property>
+
+
+vim  /usr/local/hadoop-2.6.5/etc/hadoop/slaves 
+编辑主机名  如：Hadoop1  Hadoop2
+
+
+rm -rf  /usr/local/hadoop-2.6.5/share/doc   删除文件 便于传输数据
+scp -r ../hadoop-2.6.5/ hadoop2:/usr/local/  传输数据给服务
+
+ hadoop namenode -format  启动服务前  先格式化  后可以查看出创建的目录
+
+启动
+ /usr/local/hadoop-2.6.5/sbin/start-dfs.sh   全启动
+模块启动：
+start-dfs.sh
+start-yarn.sh
+单个进程启动：
+hadoop-daemon.sh start/stop namenode
+hadoop-daemons.sh start/stop datanode
+yarn-daemons.sh start/stop namenode
+yarn-daemons.sh start/stop datanode
+mr-jobhistory-daemon.sh start/stop historyserver
+
+
+测试：
+1，查看进程是否按照安装规划启动
+2，查看对应模块的web ui监控是否正常
+查看namenode这台服务   在浏览器输入主机ip加端口即可
+3，上传和下载文件（测试hdfs），跑一个mapreduce作业
+hdfs dfs -put /usr/local/hadoop-2.6.5/README.txt /
+4，登陆web ui监控服务 
+主机ip加8088端口
+yarn jar ./share/hadoop/mapreduce/hadoop-mapreduce-examples-2.6.5.jar wordcount /README.txt /out/00
+跑动的作业 可用监控看
+hdfs dfs -ls /out 查看跑作业的目录 是否成功
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+ 
